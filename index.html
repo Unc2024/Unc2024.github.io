@@ -1,13 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MyMix</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Assistant Powered by Claude</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background-color: #f8f9fa; color: #333; }
+    h1 { color: #2c3e50; }
+    label { display: block; margin-top: 12px; font-weight: bold; }
+    input[type="password"], textarea { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+    button { margin-top: 12px; padding: 8px 16px; background-color: #007BFF; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background-color: #0056b3; }
+    #response { margin-top: 20px; white-space: pre-wrap; background-color: #fff; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+    #keyStatus { color: green; margin-top: 4px; }
+    .warning { color: red; font-weight: bold; }
+  </style>
 </head>
 <body>
-    <h1>MyMix</h1>
-    <p>This is a simple landing page for my app. Stay tuned for updates!</p>
-    <p>Contact: <a href="mailto:your-email@example.com">your-email@example.com</a></p>
+  <h1>AI Research Assistant</h1>
+  <p>This simple web app lets you ask questions and get answers from the Claude API. To use it, supply your own API key (stored locally) and ask a clear research question. Responses are subject to usage policies and may be filtered for safety.</p>
+  <label for="apiKey">Claude API key</label>
+  <input type="password" id="apiKey" placeholder="Enter your Claude API key">
+  <button id="saveKey">Save API key</button>
+  <span id="keyStatus"></span>
+
+  <form id="queryForm">
+    <label for="query">Research question</label>
+    <textarea id="query" rows="6" placeholder="What do you want to research?"></textarea>
+    <button type="submit">Submit</button>
+  </form>
+
+  <div id="response"></div>
+
+  <script>
+    // Simple keyword-based safety check. Expand this list to suit your needs.
+    const bannedWords = ["harmful", "violence", "weapon", "attack", "terrorism", "illegal", "hate"];
+
+    function isSafePrompt(text) {
+      const lower = text.toLowerCase();
+      return !bannedWords.some(word => lower.includes(word));
+    }
+
+    document.getElementById('saveKey').addEventListener('click', () => {
+      const key = document.getElementById('apiKey').value.trim();
+      if (key) {
+        localStorage.setItem('claude_api_key', key);
+        document.getElementById('keyStatus').textContent = ' API key saved in your browser.';
+      } else {
+        document.getElementById('keyStatus').textContent = '';
+      }
+    });
+
+    document.getElementById('queryForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const apiKey = localStorage.getItem('claude_api_key') || document.getElementById('apiKey').value.trim();
+      const query = document.getElementById('query').value.trim();
+      const responseDiv = document.getElementById('response');
+      responseDiv.textContent = '';
+      if (!apiKey) {
+        responseDiv.textContent = 'Please enter your API key and save it before making a request.';
+        return;
+      }
+      if (!query) {
+        responseDiv.textContent = 'Please enter a research question.';
+        return;
+      }
+      if (!isSafePrompt(query)) {
+        responseDiv.textContent = 'Your question appears to contain prohibited content. Please rephrase.';
+        return;
+      }
+      responseDiv.textContent = 'Loading...';
+      try {
+        const payload = {
+          model: 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          messages: [
+            {
+              role: 'system',
+              content: [
+                { type: 'text', text: 'You are a research assistant. Provide concise, well-sourced answers. If the query is ambiguous or unsafe, politely respond accordingly.' }
+              ]
+            },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: query }
+              ]
+            }
+          ]
+        };
+
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+            // This header enables CORS for browser requests. Use with caution.
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error('API error: ' + res.status + ' ' + text);
+        }
+
+        const data = await res.json();
+        if (data && Array.isArray(data.content) && data.content.length > 0) {
+          const answer = data.content.map(item => item.text).join('\n\n');
+          responseDiv.textContent = answer.trim();
+        } else {
+          responseDiv.textContent = 'No answer was returned.';
+        }
+      } catch (err) {
+        responseDiv.textContent = 'Error: ' + err.message;
+      }
+    });
+  </script>
 </body>
 </html>
